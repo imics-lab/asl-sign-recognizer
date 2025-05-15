@@ -8,6 +8,8 @@ import base64
 import json # For loading/saving JSON and for mock model
 import random # For mock model
 from datetime import datetime # For unique filenames
+import torch
+import torch.nn as nn
 
 # Import functions from our utils.py
 # Ensure utils.py is in the same directory or accessible via PYTHONPATH
@@ -37,6 +39,50 @@ holistic_model = mp_holistic.Holistic(
 )
 print(f"MediaPipe Holistic model initialized. Expecting {TOTAL_FEATURES} features per frame.")
 
+# --- TransformerClassifier Model Definition ---
+class TransformerClassifier(nn.Module):
+    def __init__(self, input_dim, num_classes, num_heads=8, num_layers=4, hidden_dim=256, dropout=0.1):
+        super(TransformerClassifier, self).__init__()
+        
+        self.input_dim = input_dim
+        self.num_classes = num_classes
+        
+        # Transformer encoder layer
+        encoder_layers = nn.TransformerEncoderLayer(
+            d_model=input_dim,  # Input dimension (features per frame)
+            nhead=num_heads,    # Number of attention heads
+            dim_feedforward=hidden_dim,  # Feedforward hidden layer size
+            dropout=dropout
+        )
+        
+        # Stacked transformer encoder
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layers, num_layers=num_layers
+        )
+        
+        # Classifier head
+        self.fc = nn.Linear(input_dim, num_classes)  # Final layer to output class probabilities
+    
+    def forward(self, x):
+        """
+        x: (batch_size, time_steps, features)
+        """
+        # Transformer expects input of shape (sequence_length, batch_size, input_dim)
+        x = x.permute(1, 0, 2)  # Shape: (time_steps, batch_size, features)
+        
+        # Apply transformer encoder
+        transformer_out = self.transformer_encoder(x)
+        
+        # We take the output of the last time step for classification
+        x = transformer_out[-1, :, :]  # Shape: (batch_size, features)
+        
+        # Classifier head to predict the class
+        x = self.fc(x)
+        return x
+
+# Global variable for the ASL model
+asl_model = None
+
 # --- WLASL Class List Loading ---
 WLASL_CLASSES = []
 def load_wlasl_class_list(filepath="resources/wlasl_class_list.txt"):
@@ -59,10 +105,70 @@ def load_wlasl_class_list(filepath="resources/wlasl_class_list.txt"):
         print(f"An error occurred while loading {filepath}: {e}")
         WLASL_CLASSES = [f"Sign_{i}" for i in range(2000)] # Fallback
 
-load_wlasl_class_list() # Load at application startup
+def load_asl_model(model_path="resources/asl_model.pth"):
+    input_dim = 126  # Number of features (only hand landmarks)
+    num_classes = 2000  # Adjust if your model has a different number of classes
+    num_heads = 9  # As specified in your training code
+    
+    try:
+        # Initialize model with same architecture as training
+        model = TransformerClassifier(
+            input_dim=input_dim, 
+            num_classes=num_classes,
+            num_heads=num_heads
+        )
+        
+        # Load the saved weights
+        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        model.eval()  # Set to evaluation mode
+        print(f"Successfully loaded ASL model from {model_path}")
+        return model
+    except Exception as e:
+        print(f"Error loading ASL model: {e}")
+        return None
+
+def initialize_asl_model():
+    global asl_model
+    model_path = "resources/asl_model.pth"
+    asl_model = load_asl_model(model_path)
+    if asl_model:
+        print("ASL model loaded successfully and ready for inference.")
+    else:
+        print("WARNING: ASL model couldn't be loaded. Will use mock predictions.")
+
+# Load classes and model at startup
+load_wlasl_class_list()
+initialize_asl_model()
+
+# --- Extract Hand Landmarks Function (Matching Training) ---
+def extract_hand_landmarks(sequence_data):
+    """
+    Extract hand landmarks from the full sequence data (225 features).
+    Matches the preprocessing used in training.
+    
+    Args:
+        sequence_data: Numpy array of shape (frames, 225)
+    
+    Returns:
+        Numpy array of shape (frames, 126) with only hand landmarks
+    """
+    if len(sequence_data) == 0:
+        return np.array([])
+    
+    # Calculate indices for hand landmarks (99-224)
+    hand_start = 99  # 33 pose landmarks * 3 coordinates
+    hand_features = 126  # 21 left hand + 21 right hand = 42 landmarks * 3 coordinates
+    
+    # Extract hand features
+    hand_data = np.zeros((len(sequence_data), hand_features))
+    for i, frame in enumerate(sequence_data):
+        if len(frame) >= hand_start + hand_features:
+            hand_data[i] = frame[hand_start:hand_start+hand_features]
+    
+    return hand_data
 
 # --- Model Related Constants & Functions ---
-MAX_SEQ_LENGTH = 100 # Number of frames the model expects
+MAX_SEQ_LENGTH = 80  # Adjusted to match the model's expected sequence length
 
 def detect_neutral_pose_and_trim(sequence_data, min_frames_neutral=10, y_threshold_normalized=0.7, velocity_threshold_normalized=0.03):
     """
@@ -168,6 +274,71 @@ def preprocess_landmarks_for_model(raw_sequence_data, max_len=MAX_SEQ_LENGTH, fe
     return processed_sequence_np.tolist()
 
 
+def predict_with_asl_model(landmark_sequence_processed, model, max_seq_length=MAX_SEQ_LENGTH):
+    """
+    Make predictions using the trained ASL model.
+    
+    Args:
+        landmark_sequence_processed: Preprocessed sequence (padded/truncated)
+        model: Loaded PyTorch model
+        max_seq_length: Maximum sequence length expected by the model
+    
+    Returns:
+        List of top predictions with labels and confidence scores
+    """
+    if model is None:
+        print("ASL model not loaded. Falling back to mock predictions.")
+        return mock_pytorch_model(landmark_sequence_processed)  # Fallback
+    
+    try:
+        # Convert to numpy array if it's not already
+        if not isinstance(landmark_sequence_processed, np.ndarray):
+            landmark_sequence_processed = np.array(landmark_sequence_processed)
+            
+        # Extract hand landmarks to match training
+        hand_landmarks = extract_hand_landmarks(landmark_sequence_processed)
+        
+        # Handle empty sequences
+        if len(hand_landmarks) == 0:
+            return [{"label": "No significant motion detected", "confidence": 5.0}]
+        
+        # Ensure sequence is the right length (padding/truncating)
+        if len(hand_landmarks) > max_seq_length:
+            hand_landmarks = hand_landmarks[:max_seq_length]  # Truncate
+        elif len(hand_landmarks) < max_seq_length:
+            # Pad with zeros
+            padding = np.zeros((max_seq_length - len(hand_landmarks), hand_landmarks.shape[1]))
+            hand_landmarks = np.vstack([hand_landmarks, padding])
+        
+        # Convert to PyTorch tensor
+        input_tensor = torch.tensor(hand_landmarks, dtype=torch.float32).unsqueeze(0)  # Add batch dimension
+        
+        # Make prediction
+        with torch.no_grad():
+            outputs = model(input_tensor)
+            probabilities = torch.nn.functional.softmax(outputs, dim=1)[0]
+            
+            # Get top 5 predictions
+            top_probs, top_indices = torch.topk(probabilities, min(5, len(probabilities)))
+            
+            predictions = []
+            for i, (prob, idx) in enumerate(zip(top_probs.cpu().numpy(), top_indices.cpu().numpy())):
+                confidence = float(prob * 100)  # Convert to percentage
+                if idx < len(WLASL_CLASSES):
+                    label = WLASL_CLASSES[idx]
+                else:
+                    label = f"Sign_{idx}"  # Fallback if class index is out of range
+                
+                predictions.append({"label": label, "confidence": confidence})
+
+                print(f"Prediction {i+1}: {label} with confidence {confidence:.2f}%")
+            
+            return predictions
+    except Exception as e:
+        print(f"Error during model prediction: {e}")
+        return [{"label": f"Error during prediction", "confidence": 0.0}]
+
+
 def mock_pytorch_model(landmark_sequence_processed):
     """
     Simulates a PyTorch model prediction.
@@ -201,6 +372,9 @@ def mock_pytorch_model(landmark_sequence_processed):
             })
         return predictions
 
+    # Use real model if available
+    if asl_model is not None:
+        return predict_with_asl_model(landmark_sequence_processed, asl_model)
 
     # Generate 5 random predictions for non-empty sequences
     chosen_indices = random.sample(range(num_classes), min(5, num_classes))
@@ -287,8 +461,8 @@ def upload_and_predict_video():
             # Preprocess for the model
             processed_landmarks = preprocess_landmarks_for_model(current_video_sequence_data, MAX_SEQ_LENGTH, TOTAL_FEATURES)
             
-            # Get predictions
-            predictions = mock_pytorch_model(processed_landmarks)
+            # Get predictions using the real model
+            predictions = mock_pytorch_model(processed_landmarks)  # This now tries the real model if available
             
             os.remove(video_path) # Clean up uploaded file
 
@@ -398,7 +572,7 @@ def handle_predict_webcam_sequence(landmark_data_list):
         
         # Preprocess for the model
         processed_landmarks = preprocess_landmarks_for_model(landmark_data_list, MAX_SEQ_LENGTH, TOTAL_FEATURES)
-        predictions = mock_pytorch_model(processed_landmarks)
+        predictions = mock_pytorch_model(processed_landmarks)  # This now tries the real model if available
         
         emit('webcam_prediction_result', {
             "predictions": predictions,

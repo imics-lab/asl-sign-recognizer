@@ -30,6 +30,7 @@ RUN mkdir -p resources
 COPY app.py .
 COPY utils.py .
 COPY resources/wlasl_class_list.txt resources/wlasl_class_list.txt
+COPY resources/asl_model.pth resources/asl_model.pth
 COPY templates templates/
 COPY static static/
 

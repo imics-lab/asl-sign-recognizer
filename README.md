@@ -95,19 +95,35 @@ If you make changes to the application code (Python, HTML, JS):
     ```bash
     docker stop asl-app-instance
     ```
+    or if you are using `docker-compose`, you can stop it with:
+    ```bash
+    docker-compose down
+    ```
 2.  **Remove the stopped container:**
     (This is important as `docker run` with `--name` will conflict if an old instance exists)
     ```bash
     docker rm asl-app-instance
+    ```
+    or if you are using `docker-compose`, you can remove it with:
+    ```bash
+    docker-compose rm
     ```
 3.  **Rebuild the Docker image:**
     (This incorporates your code changes into the image)
     ```bash
     docker build -t asl-recognizer-app .
     ```
+    or if you are using `docker-compose`, you can rebuild it with:
+    ```bash
+    docker-compose build app
+    ```
 4.  **Run the newly built image:**
     ```bash
     docker run -p 5000:5000 -v "$(pwd)/data:/app/data" -v "$(pwd)/uploads:/app/uploads" --name asl-app-instance asl-recognizer-app
+    ```
+    or if you are using `docker-compose`, you can run it with:
+    ```bash
+    docker-compose up -d
     ```
 
 ## Project Structure
@@ -139,8 +155,6 @@ asl-sign-recognizer/
 
 ## Future Work / Model Training
 
-The current application uses a **mock model** for sign prediction. To enable actual sign recognition, a deep learning model (e.g., LSTM, Transformer) needs to be trained on landmark sequences. The `batch_processing` directory contains scripts that can be adapted for:
+To enable actual sign recognition, a deep learning model (e.g., LSTM, Transformer) needs to be trained on landmark sequences. The `batch_processing` directory contains scripts that can be adapted for:
 1.  Extracting landmarks from a dataset like WLASL (using `batch_process_videos.py`).
 2.  Preparing these landmarks into a suitable format (e.g., NumPy arrays with padding/truncation using `create_npy_dataset.py` or `create_split_dataset.py`) for training.
-
-Once a model is trained (e.g., in PyTorch or TensorFlow/Keras) and saved, `app.py` would need to be updated to load this model and use it for predictions instead of `mock_pytorch_model`.

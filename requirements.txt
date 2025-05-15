@@ -7,3 +7,5 @@ mediapipe>=0.9.0      # Google MediaPipe
 opencv-python>=4.5      # For video reading and frame manipulation
 numpy>=1.20           # For numerical operations, especially array handling
 python-dotenv         # Optional: for managing environment variables
+torch>=1.7.0       # For PyTorch, if using a model that requires it
+torchvision>=0.8.0   # For PyTorch, if using a model that requires it
