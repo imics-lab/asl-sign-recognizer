@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASL Sign Recognition</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; margin: 0; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 900px; margin: 20px auto; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; text-align: center; }
+        .section { margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px; background-color: #f9f9f9;}
+        
+        /* Webcam and Upload Areas */
+        .capture-area, .upload-area { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        #webcamFeed { max-width: 100%; width: 480px; border: 2px solid #ccc; border-radius: 4px; background-color: #000; }
+        #countdownDisplay { font-size: 3em; font-weight: bold; color: #d9534f; height: 60px; line-height: 60px; text-align: center; }
+        .recording-indicator { width: 20px; height: 20px; background-color: red; border-radius: 50%; display: inline-block; margin-left: 10px; animation: blink 1s infinite; visibility: hidden; }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* Buttons */
+        button { padding: 10px 15px; font-size: 1em; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.3s ease; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #enableCamButton { background-color: #5cb85c; /* Green */ }
+        #enableCamButton:hover:not(:disabled) { background-color: #4cae4c; }
+        #startCaptureButton, #uploadVideoButton { background-color: #337ab7; /* Blue */ }
+        #startCaptureButton:hover:not(:disabled), #uploadVideoButton:hover:not(:disabled) { background-color: #286090; }
+        #stopCaptureButton { background-color: #d9534f; /* Red */ }
+        #stopCaptureButton:hover:not(:disabled) { background-color: #c9302c; }
+        #clearResultsButton { background-color: #f0ad4e; /* Orange */ }
+        #clearResultsButton:hover:not(:disabled) { background-color: #ec971f; }
+
+        /* Results Area */
+        #resultsArea { margin-top: 15px; padding: 15px; border: 1px solid #ddd; background-color: #f9f9f9; border-radius: 4px; }
+        #predictionList { list-style: none; padding: 0; }
+        #predictionList li { padding: 8px 0; border-bottom: 1px dotted #eee; }
+        #predictionList li:last-child { border-bottom: none; }
+        #predictionList .label { font-weight: bold; }
+        #predictionList .confidence { float: right; color: #555; }
+        #confidenceMessage { font-style: italic; color: #777; margin-top: 10px; }
+        #playbackLinkContainer { margin-top: 15px; text-align: center; }
+
+        /* Status and Tips */
+        #statusMessage { margin-top: 10px; font-weight: bold; text-align: center; min-height: 20px; }
+        .tips-section { background-color: #e7f3fe; border-left: 5px solid #2196F3; padding: 15px; margin-top: 20px; }
+        .tips-section h3 { margin-top: 0; color: #2196F3; }
+        .tips-section ul { padding-left: 20px; }
+
+        .hidden { display: none !important; }
+        nav { text-align: center; margin-bottom: 20px; }
+        nav a { margin: 0 15px; text-decoration: none; color: #337ab7; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ASL Sign Recognition</h1>
+        <nav>
+            <a href="/landmark_extractor">Go to Landmark Extractor</a>
+            <a href="/playback">Go to Playback Tool</a>
+        </nav>
+
+        <!-- Section 1: Webcam Capture -->
+        <div class="section">
+            <h2>Capture Sign via Webcam</h2>
+            <div class="capture-area">
+                <video id="webcamFeed" autoplay playsinline muted></video> <!-- Muted to prevent feedback -->
+                <canvas id="canvas" style="display: none;"></canvas> <!-- Hidden canvas for frame grabbing -->
+                <div id="countdownDisplay"></div>
+                <div>
+                    <button id="enableCamButton">Enable Camera</button>
+                    <button id="startCaptureButton" disabled>Start Capture <span id="recIndicatorWebcam" class="recording-indicator"></span></button>
+                    <button id="stopCaptureButton" disabled>Stop Capture</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Upload Video File -->
+        <div class="section">
+            <h2>Upload Video File</h2>
+            <div class="upload-area">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <input type="file" id="videoFile" name="video" accept="video/*" required>
+                    <button type="submit" id="uploadVideoButton">Upload and Predict</button>
+                </form>
+            </div>
+        </div>
+        
+        <div id="statusMessage">Initializing... Please enable camera or upload a video.</div>
+
+        <!-- Section 3: Prediction Results -->
+        <div id="resultsArea" class="section hidden">
+            <h2>Prediction Results</h2>
+            <ul id="predictionList">
+                <!-- Predictions will be populated here by JavaScript -->
+            </ul>
+            <div id="confidenceMessage"></div>
+            <div id="playbackLinkContainer" style="text-align: center;"> <!-- Added text-align for better centering of links -->
+                <a id="playbackLink" href="#" target="_blank" class="hidden" style="margin-right: 15px;">Play Captured/Uploaded Landmarks</a>
+                <a id="downloadRawJsonLink" href="#" download class="hidden">Download Raw Landmark JSON</a>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="clearResultsButton">Try Another Sign</button>
+            </div>
+        </div>
+
+        <!-- Section 4: Tips for Better Recognition -->
+        <div class="section tips-section">
+            <h3>Tips for Better Recognition</h3>
+            <ul>
+                <li>Ensure good, consistent lighting. Avoid shadows on your hands and face.</li>
+                <li>Position yourself so your upper body and hands are clearly visible.</li>
+                <li>Wear clothing that contrasts with your skin tone if possible.</li>
+                <li>Perform signs clearly and at a natural pace.</li>
+                <li>After signing with webcam, return to a neutral, hands-down position before clicking "Stop".</li>
+                <li>Minimize background distractions.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/js/recognition.js"></script>
+</body>
+</html>

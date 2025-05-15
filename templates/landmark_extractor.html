@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaPipe Landmark Extractor</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; margin: 0; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: 20px auto; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; text-align: center; }
+        .section { margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px; background-color: #f9f9f9;}
+        #webcamFeedExtractor { max-width: 100%; width: 480px; border: 1px solid black; border-radius: 4px; background-color: #000;}
+        #statusExtractor, #uploadStatusExtractor { margin-top: 10px; font-style: italic; text-align: center;}
+        #resultsAreaExtractor, #uploadResultsAreaExtractor { margin-top: 15px; max-height: 200px; overflow-y: auto; background: #f0f0f0; padding: 10px; border: 1px solid #ddd; font-size: 0.9em; white-space: pre-wrap; word-wrap: break-word; }
+        .hidden { display: none; }
+        nav { text-align: center; margin-bottom: 20px; }
+        nav a { margin: 0 15px; text-decoration: none; color: #337ab7; font-weight: bold; }
+        button { padding: 10px 15px; font-size: 1em; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.3s ease; margin: 5px; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .button-green { background-color: #5cb85c; }
+        .button-green:hover:not(:disabled) { background-color: #4cae4c; }
+        .button-blue { background-color: #337ab7; }
+        .button-blue:hover:not(:disabled) { background-color: #286090; }
+        .button-red { background-color: #d9534f; }
+        .button-red:hover:not(:disabled) { background-color: #c9302c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MediaPipe Landmark Extractor</h1>
+        <nav>
+            <a href="/">Back to Sign Recognition</a>
+            <a href="/playback">Go to Playback Tool</a>
+        </nav>
+
+        <!-- Section 1: Video Upload for Extraction -->
+        <div class="section">
+            <h2>1. Upload Video File for Landmark Extraction</h2>
+            <form id="uploadFormExtractor" enctype="multipart/form-data" style="text-align:center;">
+                <input type="file" id="videoFileExtractor" name="video" accept="video/*" required>
+                <button type="submit" class="button-blue">Upload and Extract Landmarks</button>
+            </form>
+            <div id="uploadStatusExtractor"></div>
+            <div id="uploadResultsAreaExtractor" class="hidden">
+                <h4>Extraction Result:</h4>
+                <pre id="uploadResultDataExtractor"></pre>
+                <a id="downloadLinkExtractor" href="#" download style="display: block; text-align: center; margin-top: 10px;">Download Landmark Data (JSON)</a>
+            </div>
+        </div>
+
+        <!-- Section 2: Webcam Capture for Extraction -->
+        <div class="section">
+            <h2>2. Capture via Webcam for Landmark Extraction</h2>
+            <div style="text-align:center;">
+                <video id="webcamFeedExtractor" autoplay playsinline muted></video>
+                <canvas id="canvasExtractor" style="display: none;"></canvas> <!-- Hidden canvas for frame grabbing -->
+            </div>
+            <div style="text-align:center; margin-top:10px;">
+                <button id="startButtonExtractor" class="button-green">Start Capture</button>
+                <button id="stopButtonExtractor" class="button-red" disabled>Stop Capture & Save Data</button>
+            </div>
+            <div id="statusExtractor">Ready. Press Start Capture.</div>
+             <div id="resultsAreaExtractor" class="hidden" style="text-align:center;">
+                <h4>Collected Landmark Sequence:</h4>
+                 <p><span id="frameCountExtractor">0</span> frames collected.</p>
+                 <a id="webcamDownloadLinkExtractor" href="#" download="webcam_landmarks_extraction.json">Download Collected Data (JSON)</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
