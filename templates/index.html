@@ -48,6 +48,32 @@
         .hidden { display: none !important; }
         nav { text-align: center; margin-bottom: 20px; }
         nav a { margin: 0 15px; text-decoration: none; color: #337ab7; font-weight: bold; }
+
+        /* Model Selector Styles */
+        .model-selector-container { 
+            text-align: center; 
+            margin: 15px auto; 
+            padding: 10px; 
+            background-color: #f0f8ff; 
+            border-radius: 5px; 
+            border: 1px solid #d0e0f0; 
+            max-width: 500px;
+        }
+        #modelSelector {
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 1em;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        #modelStatus {
+            display: inline-block;
+            min-width: 100px;
+        }
+        .status-success { color: green; }
+        .status-error { color: red; }
+        .status-loading { color: orange; }
     </style>
 </head>
 <body>
@@ -57,6 +83,15 @@
             <a href="/landmark_extractor">Go to Landmark Extractor</a>
             <a href="/playback">Go to Playback Tool</a>
         </nav>
+
+        <!-- Model Selector -->
+        <div class="model-selector-container">
+            <label for="modelSelector">Select prediction model:</label>
+            <select id="modelSelector">
+                <!-- Options will be populated dynamically by JavaScript -->
+            </select>
+            <span id="modelStatus" style="margin-left: 10px; font-size: 0.9em;"></span>
+        </div>
 
         <!-- Section 1: Webcam Capture -->
         <div class="section">
@@ -73,6 +108,8 @@
             </div>
         </div>
 
+        <div id="statusMessage">Initializing... Please enable camera or upload a video.</div>
+
         <!-- Section 2: Upload Video File -->
         <div class="section">
             <h2>Upload Video File</h2>
@@ -83,8 +120,6 @@
                 </form>
             </div>
         </div>
-        
-        <div id="statusMessage">Initializing... Please enable camera or upload a video.</div>
 
         <!-- Section 3: Prediction Results -->
         <div id="resultsArea" class="section hidden">

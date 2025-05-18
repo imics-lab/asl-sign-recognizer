@@ -35,6 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const playbackLinkContainer = document.getElementById('playbackLinkContainer'); // To show/hide link
     const clearResultsButton = document.getElementById('clearResultsButton');
 
+    // Model selector elements
+    const modelSelector = document.getElementById('modelSelector');
+    const modelStatus = document.getElementById('modelStatus');
+
     // --- Initial UI State ---
     function resetUIForNewSign() {
         stopCaptureButton.disabled = true;
@@ -63,6 +67,80 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     resetUIForNewSign(); // Set initial state
+
+    // --- Model Selector Logic ---
+    async function loadAvailableModels() {
+        try {
+            modelStatus.textContent = 'Loading...';
+            modelStatus.className = 'status-loading';
+            
+            const response = await fetch('/models');
+            const data = await response.json();
+            
+            // Clear existing options
+            modelSelector.innerHTML = '';
+            
+            // Add options for each available model
+            data.available_models.forEach(modelName => {
+                const option = document.createElement('option');
+                option.value = modelName;
+                option.textContent = modelName.charAt(0).toUpperCase() + modelName.slice(1); // Capitalize first letter
+                option.selected = modelName === data.current_model;
+                modelSelector.appendChild(option);
+            });
+            
+            modelStatus.textContent = `Using: ${data.current_model}`;
+            modelStatus.className = 'status-success';
+        } catch (error) {
+            console.error('Error loading models:', error);
+            modelStatus.textContent = 'Error loading models';
+            modelStatus.className = 'status-error';
+        }
+    }
+    
+    // Load models when page loads
+    loadAvailableModels();
+    
+    // Handle model change
+    modelSelector.addEventListener('change', async function() {
+        const selectedModel = this.value;
+        
+        try {
+            modelStatus.textContent = 'Changing...';
+            modelStatus.className = 'status-loading';
+            
+            const response = await fetch('/change_model', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ model_name: selectedModel }),
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                modelStatus.textContent = `Using: ${result.current_model}`;
+                modelStatus.className = 'status-success';
+                
+                // Update status message
+                updateStatus(`Model changed to: ${result.current_model}`);
+            } else {
+                modelStatus.textContent = result.error || 'Error changing model';
+                modelStatus.className = 'status-error';
+                
+                // Reset the selector to the current model
+                loadAvailableModels();
+            }
+        } catch (error) {
+            console.error('Error changing model:', error);
+            modelStatus.textContent = 'Error changing model';
+            modelStatus.className = 'status-error';
+            
+            // Reset the selector to the current model
+            loadAvailableModels();
+        }
+    });
 
     // --- Helper Functions ---
     function updateStatus(message, isError = false) {

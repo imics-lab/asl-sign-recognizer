@@ -9,11 +9,13 @@ import json # For loading/saving JSON and for mock model
 import random # For mock model
 from datetime import datetime # For unique filenames
 import torch
-import torch.nn as nn
 
 # Import functions from our utils.py
 # Ensure utils.py is in the same directory or accessible via PYTHONPATH
 from utils import extract_landmarks, process_video_file, TOTAL_FEATURES # TOTAL_FEATURES is now 225
+
+# Import model-related components from our models package
+from models import get_model, list_available_models
 
 import mediapipe as mp
 
@@ -23,6 +25,9 @@ app.config['SECRET_KEY'] = 'your_very_secret_key_please_change_me!' # IMPORTANT:
 app.config['UPLOAD_FOLDER'] = 'uploads' # Temporary storage for uploaded videos
 app.config['PROCESSED_DATA_FOLDER'] = 'data' # For JSON landmark files
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload size
+app.config['MODEL_NAME'] = 'mock'  # Default model to use
+app.config['MODEL_PATH'] = 'resources/asl_model.pth'  # Path to model weights
+app.config['CLASS_LIST_PATH'] = 'resources/wlasl_class_list.txt'  # Path to class list
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['PROCESSED_DATA_FOLDER'], exist_ok=True)
@@ -39,353 +44,108 @@ holistic_model = mp_holistic.Holistic(
 )
 print(f"MediaPipe Holistic model initialized. Expecting {TOTAL_FEATURES} features per frame.")
 
-# --- TransformerClassifier Model Definition ---
-class TransformerClassifier(nn.Module):
-    def __init__(self, input_dim, num_classes, num_heads=8, num_layers=4, hidden_dim=256, dropout=0.1):
-        super(TransformerClassifier, self).__init__()
-        
-        self.input_dim = input_dim
-        self.num_classes = num_classes
-        
-        # Transformer encoder layer
-        encoder_layers = nn.TransformerEncoderLayer(
-            d_model=input_dim,  # Input dimension (features per frame)
-            nhead=num_heads,    # Number of attention heads
-            dim_feedforward=hidden_dim,  # Feedforward hidden layer size
-            dropout=dropout
-        )
-        
-        # Stacked transformer encoder
-        self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layers, num_layers=num_layers
-        )
-        
-        # Classifier head
-        self.fc = nn.Linear(input_dim, num_classes)  # Final layer to output class probabilities
-    
-    def forward(self, x):
-        """
-        x: (batch_size, time_steps, features)
-        """
-        # Transformer expects input of shape (sequence_length, batch_size, input_dim)
-        x = x.permute(1, 0, 2)  # Shape: (time_steps, batch_size, features)
-        
-        # Apply transformer encoder
-        transformer_out = self.transformer_encoder(x)
-        
-        # We take the output of the last time step for classification
-        x = transformer_out[-1, :, :]  # Shape: (batch_size, features)
-        
-        # Classifier head to predict the class
-        x = self.fc(x)
-        return x
-
 # Global variable for the ASL model
 asl_model = None
-
-# --- WLASL Class List Loading ---
-WLASL_CLASSES = []
-def load_wlasl_class_list(filepath="resources/wlasl_class_list.txt"):
-    global WLASL_CLASSES
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f: # Added encoding
-            for line in f:
-                parts = line.strip().split('\t')
-                if len(parts) == 2:
-                    WLASL_CLASSES.append(parts[1]) # Store only the name
-        if WLASL_CLASSES:
-            print(f"Successfully loaded {len(WLASL_CLASSES)} classes from {filepath}")
-        else:
-            print(f"Warning: {filepath} was read, but no classes were loaded. Check file format.")
-            WLASL_CLASSES = [f"Sign_{i}" for i in range(2000)] # Fallback
-    except FileNotFoundError:
-        print(f"Error: {filepath} not found. Mock model will use generic labels.")
-        WLASL_CLASSES = [f"Sign_{i}" for i in range(2000)] # Fallback
-    except Exception as e:
-        print(f"An error occurred while loading {filepath}: {e}")
-        WLASL_CLASSES = [f"Sign_{i}" for i in range(2000)] # Fallback
-
-def load_asl_model(model_path="resources/asl_model.pth"):
-    input_dim = 126  # Number of features (only hand landmarks)
-    num_classes = 2000  # Adjust if your model has a different number of classes
-    num_heads = 9  # As specified in your training code
-    
-    try:
-        # Initialize model with same architecture as training
-        model = TransformerClassifier(
-            input_dim=input_dim, 
-            num_classes=num_classes,
-            num_heads=num_heads
-        )
-        
-        # Load the saved weights
-        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-        model.eval()  # Set to evaluation mode
-        print(f"Successfully loaded ASL model from {model_path}")
-        return model
-    except Exception as e:
-        print(f"Error loading ASL model: {e}")
-        return None
-
-def initialize_asl_model():
-    global asl_model
-    model_path = "resources/asl_model.pth"
-    asl_model = load_asl_model(model_path)
-    if asl_model:
-        print("ASL model loaded successfully and ready for inference.")
-    else:
-        print("WARNING: ASL model couldn't be loaded. Will use mock predictions.")
-
-# Load classes and model at startup
-load_wlasl_class_list()
-initialize_asl_model()
-
-# --- Extract Hand Landmarks Function (Matching Training) ---
-def extract_hand_landmarks(sequence_data):
-    """
-    Extract hand landmarks from the full sequence data (225 features).
-    Matches the preprocessing used in training.
-    
-    Args:
-        sequence_data: Numpy array of shape (frames, 225)
-    
-    Returns:
-        Numpy array of shape (frames, 126) with only hand landmarks
-    """
-    if len(sequence_data) == 0:
-        return np.array([])
-    
-    # Calculate indices for hand landmarks (99-224)
-    hand_start = 99  # 33 pose landmarks * 3 coordinates
-    hand_features = 126  # 21 left hand + 21 right hand = 42 landmarks * 3 coordinates
-    
-    # Extract hand features
-    hand_data = np.zeros((len(sequence_data), hand_features))
-    for i, frame in enumerate(sequence_data):
-        if len(frame) >= hand_start + hand_features:
-            hand_data[i] = frame[hand_start:hand_start+hand_features]
-    
-    return hand_data
 
 # --- Model Related Constants & Functions ---
 MAX_SEQ_LENGTH = 80  # Adjusted to match the model's expected sequence length
 
-def detect_neutral_pose_and_trim(sequence_data, min_frames_neutral=10, y_threshold_normalized=0.7, velocity_threshold_normalized=0.03):
-    """
-    Analyzes the end of a sequence for a neutral pose (hands down, low velocity) and trims it.
-    sequence_data: list of landmark lists (each landmark list has TOTAL_FEATURES numbers).
-    y_threshold_normalized: Normalized y-coordinate (0=top, 1=bottom). Wrists should be below this.
-    velocity_threshold_normalized: Max average change in normalized x,y for wrist landmarks.
-    min_frames_neutral: How many consecutive frames must be neutral.
-    """
-    if not sequence_data or len(sequence_data) < min_frames_neutral:
-        return sequence_data
-
-    # Indices for Pose landmarks (from MediaPipe Holistic documentation):
-    # LEFT_WRIST = 15, RIGHT_WRIST = 16
-    # In our flat array (Pose, LH, RH), Pose landmarks are first.
-    # x, y, z for each.
-    LW_X_IDX, LW_Y_IDX = 15 * 3, 15 * 3 + 1
-    RW_X_IDX, RW_Y_IDX = 16 * 3, 16 * 3 + 1
-
-    # Iterate backwards from a point that allows a full neutral segment to be checked
-    for i in range(len(sequence_data) - min_frames_neutral, -1, -1):
-        is_segment_neutral = True
-        for j in range(min_frames_neutral):
-            current_frame_idx_in_segment = i + j
-            frame = sequence_data[current_frame_idx_in_segment]
-            # Use current frame as prev_frame if it's the first frame of the segment AND sequence
-            prev_frame = sequence_data[current_frame_idx_in_segment - 1] if current_frame_idx_in_segment > 0 else frame
-
-            # Check Y position of wrists (assuming normalized 0.0 at top, 1.0 at bottom of frame)
-            left_wrist_y = frame[LW_Y_IDX]
-            right_wrist_y = frame[RW_Y_IDX]
-
-            # Hands DOWN: y-coordinate should be larger (further down the screen)
-            if left_wrist_y < y_threshold_normalized or right_wrist_y < y_threshold_normalized:
-                is_segment_neutral = False
-                break
-            
-            # Check velocity (simplified: change from previous frame for wrists)
-            lw_vel = abs(frame[LW_X_IDX] - prev_frame[LW_X_IDX]) + abs(frame[LW_Y_IDX] - prev_frame[LW_Y_IDX])
-            rw_vel = abs(frame[RW_X_IDX] - prev_frame[RW_X_IDX]) + abs(frame[RW_Y_IDX] - prev_frame[RW_Y_IDX])
-
-            if lw_vel > velocity_threshold_normalized or rw_vel > velocity_threshold_normalized:
-                is_segment_neutral = False
-                break
-        
-        if is_segment_neutral:
-            print(f"Neutral pose detected starting at original frame index {i}. Trimming sequence.")
-            return sequence_data[:i] # Trim up to the start of the neutral segment
-
-    print("No clear neutral pose detected at the end. Using full (or previously trimmed) sequence.")
-    return sequence_data
-
-
-def preprocess_landmarks_for_model(raw_sequence_data, max_len=MAX_SEQ_LENGTH, features_per_frame=TOTAL_FEATURES):
-    """
-    Preprocesses a list of landmark lists:
-    1. Trims based on neutral pose detection at the end.
-    2. Pads or truncates the sequence to max_len.
-    Returns a list of lists, ready for the model.
-    """
-    # 1. Trim based on neutral pose detection (if enabled and configured)
-    # For now, let's assume it's always active.
-    trimmed_sequence = detect_neutral_pose_and_trim(raw_sequence_data)
+def initialize_asl_model():
+    """Initialize the ASL sign recognition model based on app configuration"""
+    global asl_model
+    model_name = app.config.get('MODEL_NAME', 'mock')
+    class_list_path = app.config.get('CLASS_LIST_PATH', 'resources/wlasl_class_list.txt')
     
-    # 2. Pad or Truncate to max_len
-    processed_sequence_np = np.zeros((max_len, features_per_frame), dtype=np.float32)
+    model_kwargs = {
+        'class_list_path': class_list_path
+    }
     
-    num_frames = len(trimmed_sequence)
-    
-    if num_frames > 0:
-        actual_frames_to_copy = min(num_frames, max_len)
-        
-        # Convert to numpy array for slicing and assignment
-        # Ensure the inner lists are consistently `features_per_frame` long
-        # This should be guaranteed by extract_landmarks
-        try:
-            trimmed_array = np.array(trimmed_sequence[:actual_frames_to_copy], dtype=np.float32)
-            if trimmed_array.shape[1] != features_per_frame:
-                # This case should ideally not happen if extract_landmarks is correct
-                print(f"Warning: Feature count mismatch in trimmed_array. Expected {features_per_frame}, got {trimmed_array.shape[1]}. Adjusting.")
-                # Create a correctly shaped temp array and copy what we can
-                temp_array = np.zeros((trimmed_array.shape[0], features_per_frame), dtype=np.float32)
-                copy_cols = min(trimmed_array.shape[1], features_per_frame)
-                temp_array[:, :copy_cols] = trimmed_array[:, :copy_cols]
-                trimmed_array = temp_array
-
-            processed_sequence_np[:actual_frames_to_copy, :] = trimmed_array
-            
-            if num_frames > max_len:
-                print(f"Sequence truncated from {num_frames} (after trim) to {max_len} frames.")
-            elif num_frames < max_len:
-                print(f"Sequence padded from {num_frames} (after trim) to {max_len} frames.")
-            # else: sequence length matched max_len after trimming
-
-        except ValueError as ve:
-            print(f"ValueError during numpy array conversion or assignment: {ve}")
-            print("This might be due to inconsistent feature counts in frames of raw_sequence_data.")
-            # Fallback to returning zeros, or handle error more gracefully
-            return processed_sequence_np.tolist()
+    # Only pass model_path for the real transformer model
+    if model_name == 'transformer':
+        model_path = app.config.get('MODEL_PATH', 'resources/asl_model.pth')
+        print(f"Initializing {model_name} model with weights from '{model_path}'")
+        model_kwargs['model_path'] = model_path
     else:
-        print("Sequence is empty after trimming (or was empty initially). Returning zero-padded sequence.")
+        print(f"Initializing {model_name} model")
+    
+    # Use the model registry to get the appropriate model
+    asl_model = get_model(model_name, **model_kwargs)
+    
+    if asl_model:
+        print("ASL model loaded successfully and ready for inference.")
+    else:
+        print("WARNING: ASL model couldn't be loaded. Falling back to mock model.")
+        # Fallback to mock model if the requested model fails to load
+        asl_model = get_model('mock', class_list_path=class_list_path)
 
-    return processed_sequence_np.tolist()
+# Initialize the model at startup
+initialize_asl_model()
+print(f"Available models: {', '.join(list_available_models())}")
 
+def preprocess_landmarks_for_model(raw_sequence_data):
+    """Preprocess landmark data to prepare it for model input"""
+    if not raw_sequence_data:
+        return None
+    
+    # Convert to numpy array if it's a list
+    raw_sequence_data = np.array(raw_sequence_data) if isinstance(raw_sequence_data, list) else raw_sequence_data
+    
+    # Let the model handle all preprocessing
+    return raw_sequence_data
 
-def predict_with_asl_model(landmark_sequence_processed, model, max_seq_length=MAX_SEQ_LENGTH):
+def predict_with_model(landmarks_data, top_n=5):
     """
-    Make predictions using the trained ASL model.
+    Make predictions using the loaded ASL model.
     
     Args:
-        landmark_sequence_processed: Preprocessed sequence (padded/truncated)
-        model: Loaded PyTorch model
-        max_seq_length: Maximum sequence length expected by the model
+        landmarks_data: Raw landmark sequence data
+        top_n: Number of top predictions to return
     
     Returns:
         List of top predictions with labels and confidence scores
     """
-    if model is None:
-        print("ASL model not loaded. Falling back to mock predictions.")
-        return mock_pytorch_model(landmark_sequence_processed)  # Fallback
+    if asl_model is None:
+        print("No ASL model available for prediction.")
+        return [{"label": "Model not available", "confidence": 0.0}]
     
     try:
-        # Convert to numpy array if it's not already
-        if not isinstance(landmark_sequence_processed, np.ndarray):
-            landmark_sequence_processed = np.array(landmark_sequence_processed)
-            
-        # Extract hand landmarks to match training
-        hand_landmarks = extract_hand_landmarks(landmark_sequence_processed)
+        # The model handles preprocessing, prediction, and postprocessing internally
+        predictions = asl_model(landmarks_data, top_n=top_n)
         
-        # Handle empty sequences
-        if len(hand_landmarks) == 0:
+        # Check for empty predictions
+        if not predictions:
             return [{"label": "No significant motion detected", "confidence": 5.0}]
-        
-        # Ensure sequence is the right length (padding/truncating)
-        if len(hand_landmarks) > max_seq_length:
-            hand_landmarks = hand_landmarks[:max_seq_length]  # Truncate
-        elif len(hand_landmarks) < max_seq_length:
-            # Pad with zeros
-            padding = np.zeros((max_seq_length - len(hand_landmarks), hand_landmarks.shape[1]))
-            hand_landmarks = np.vstack([hand_landmarks, padding])
-        
-        # Convert to PyTorch tensor
-        input_tensor = torch.tensor(hand_landmarks, dtype=torch.float32).unsqueeze(0)  # Add batch dimension
-        
-        # Make prediction
-        with torch.no_grad():
-            outputs = model(input_tensor)
-            probabilities = torch.nn.functional.softmax(outputs, dim=1)[0]
             
-            # Get top 5 predictions
-            top_probs, top_indices = torch.topk(probabilities, min(5, len(probabilities)))
+        # Check for empty sequence special case safely without boolean evaluation of arrays
+        if isinstance(predictions, list) and len(predictions) > 0:
+            # Check if first prediction is the "no motion" label
+            first_pred = predictions[0]
+            if isinstance(first_pred, tuple) and len(first_pred) > 0:
+                if first_pred[0] == "No significant motion detected":
+                    return [{"label": "No significant motion detected", "confidence": 5.0}] + [
+                        {"label": label, "confidence": round(confidence * 100, 2)} 
+                        for label, confidence in predictions[1:]
+                    ]
+        
+        # Convert to the format expected by the frontend
+        formatted_predictions = []
+        for label, confidence in predictions:
+            formatted_predictions.append({
+                "label": label, 
+                "confidence": round(confidence * 100, 2)  # Convert to percentage with 2 decimal places
+            })
             
-            predictions = []
-            for i, (prob, idx) in enumerate(zip(top_probs.cpu().numpy(), top_indices.cpu().numpy())):
-                confidence = float(prob * 100)  # Convert to percentage
-                if idx < len(WLASL_CLASSES):
-                    label = WLASL_CLASSES[idx]
-                else:
-                    label = f"Sign_{idx}"  # Fallback if class index is out of range
-                
-                predictions.append({"label": label, "confidence": confidence})
-
-                print(f"Prediction {i+1}: {label} with confidence {confidence:.2f}%")
+            print(f"Prediction: {label} with confidence {round(confidence * 100, 2)}%")
+        
+        if not formatted_predictions:
+            return [{"label": "No significant motion detected", "confidence": 5.0}]
             
-            return predictions
+        return formatted_predictions
     except Exception as e:
         print(f"Error during model prediction: {e}")
+        import traceback
+        traceback.print_exc()  # Print the full stack trace for debugging
         return [{"label": f"Error during prediction", "confidence": 0.0}]
-
-
-def mock_pytorch_model(landmark_sequence_processed):
-    """
-    Simulates a PyTorch model prediction.
-    landmark_sequence_processed: A list of lists (max_len x TOTAL_FEATURES).
-    Returns a list of top-5 predictions (dict with "label" and "confidence").
-    """
-    # print(f"Mock model received processed sequence with {len(landmark_sequence_processed)} frames.")
-    
-    num_classes = len(WLASL_CLASSES)
-    if num_classes == 0:
-        return [{"label": "Error: Class list not loaded", "confidence": 0.0}]
-
-    # Simulate some processing or check if sequence is mostly zeros
-    # For a more "realistic" mock, check if there's any non-zero data
-    is_empty_sequence = not np.any(landmark_sequence_processed) # True if all zeros
-    
-    predictions = []
-    
-    if is_empty_sequence:
-        # If the sequence is empty (all zeros after padding), return low confidence
-        predictions.append({
-            "label": "No significant motion detected",
-            "confidence": 5.0
-        })
-        # Fill remaining with random low confidence
-        chosen_indices = random.sample(range(num_classes), min(4, num_classes))
-        for class_idx in chosen_indices:
-            predictions.append({
-                "label": WLASL_CLASSES[class_idx],
-                "confidence": round(random.uniform(0.1, 2.0), 2)
-            })
-        return predictions
-
-    # Use real model if available
-    if asl_model is not None:
-        return predict_with_asl_model(landmark_sequence_processed, asl_model)
-
-    # Generate 5 random predictions for non-empty sequences
-    chosen_indices = random.sample(range(num_classes), min(5, num_classes))
-    confidences = sorted([random.random() for _ in range(len(chosen_indices))], reverse=True)
-    
-    for i, class_idx in enumerate(chosen_indices):
-        predictions.append({
-            "label": WLASL_CLASSES[class_idx],
-            "confidence": round(confidences[i] * 100, 2) # As percentage
-        })
-    return predictions
 
 # --- Routes ---
 @app.route('/')
@@ -402,6 +162,48 @@ def landmark_extractor_page():
 def playback_page():
     """Serves the landmark playback page."""
     return render_template('playback.html')
+
+@app.route('/models', methods=['GET'])
+def get_available_models():
+    """Returns a list of available models and the currently selected model."""
+    available_models = list_available_models()
+    current_model = app.config.get('MODEL_NAME', 'mock')
+    return jsonify({
+        "available_models": available_models,
+        "current_model": current_model
+    })
+
+@app.route('/change_model', methods=['POST'])
+def change_model():
+    """Changes the current model based on user selection."""
+    data = request.get_json()
+    if not data or 'model_name' not in data:
+        return jsonify({"error": "No model name provided"}), 400
+    
+    model_name = data['model_name']
+    available_models = list_available_models()
+    
+    if model_name not in available_models:
+        return jsonify({"error": f"Model '{model_name}' not found. Available models: {', '.join(available_models)}"}), 400
+    
+    try:
+        # Store the old model name for response
+        old_model_name = app.config.get('MODEL_NAME', 'mock')
+        
+        # Update the app config
+        app.config['MODEL_NAME'] = model_name
+        
+        # Re-initialize the model
+        initialize_asl_model()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Model changed from '{old_model_name}' to '{model_name}'",
+            "previous_model": old_model_name,
+            "current_model": model_name
+        })
+    except Exception as e:
+        return jsonify({"error": f"Error changing model: {str(e)}"}), 500
 
 @app.route('/upload_and_predict', methods=['POST'])
 def upload_and_predict_video():
@@ -459,10 +261,10 @@ def upload_and_predict_video():
             playback_filename = playback_filename_stem # Filename to send to client
 
             # Preprocess for the model
-            processed_landmarks = preprocess_landmarks_for_model(current_video_sequence_data, MAX_SEQ_LENGTH, TOTAL_FEATURES)
+            processed_landmarks = preprocess_landmarks_for_model(current_video_sequence_data)
             
-            # Get predictions using the real model
-            predictions = mock_pytorch_model(processed_landmarks)  # This now tries the real model if available
+            # Get predictions using the model
+            predictions = predict_with_model(processed_landmarks)
             
             os.remove(video_path) # Clean up uploaded file
 
@@ -571,8 +373,8 @@ def handle_predict_webcam_sequence(landmark_data_list):
             json.dump(landmark_data_list, f_pb)
         
         # Preprocess for the model
-        processed_landmarks = preprocess_landmarks_for_model(landmark_data_list, MAX_SEQ_LENGTH, TOTAL_FEATURES)
-        predictions = mock_pytorch_model(processed_landmarks)  # This now tries the real model if available
+        processed_landmarks = preprocess_landmarks_for_model(landmark_data_list)
+        predictions = predict_with_model(processed_landmarks)
         
         emit('webcam_prediction_result', {
             "predictions": predictions,

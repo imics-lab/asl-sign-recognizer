@@ -33,6 +33,8 @@ COPY resources/wlasl_class_list.txt resources/wlasl_class_list.txt
 COPY resources/asl_model.pth resources/asl_model.pth
 COPY templates templates/
 COPY static static/
+COPY models/ /app/models/
+COPY __init__.py /app/
 
 # Make port 5000 available to the world outside this container
 EXPOSE 5000
@@ -40,7 +42,8 @@ EXPOSE 5000
 # Define environment variables
 ENV FLASK_APP=app.py
 ENV FLASK_RUN_HOST=0.0.0.0
-ENV PYTHONUNBUFFERED=1 
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Command to run the application
 CMD ["python", "app.py"]
