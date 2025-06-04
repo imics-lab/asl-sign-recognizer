@@ -1,0 +1,47 @@
+# docker-compose.yml
+
+services:
+  # Your Flask/SocketIO Application
+  app:
+    build: . # Build from the Dockerfile in the current directory
+    container_name: sign_language_app_service
+    restart: unless-stopped
+    expose:
+      - "5000" # Expose port 5000 *internally* for Nginx to connect to
+    volumes:
+      # Use named volumes for persistent data (recommended)
+      - uploads_data:/app/uploads
+      - landmarks_data:/app/data
+      # Or use host paths on the VM (adjust path as needed):
+      # - ./vm_uploads:/app/uploads
+      # - ./vm_data:/app/data
+    command: ["python", "app.py"] # Or use gunicorn for production (see notes)
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:stable-alpine # Use official Nginx image
+    container_name: sign_language_nginx_proxy
+    restart: unless-stopped
+    ports:
+      # Map VM's port 80 to Nginx container's port 80
+      - "80:80"
+      # Add "443:443" later if you configure HTTPS
+      - "443:443"
+    volumes:
+      # Mount the Nginx config file into the container
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro # Read-only mount
+      # Mount volumes for persistent data (shared with app)
+      # This allows Nginx to potentially serve downloaded data files directly if configured
+      - uploads_data:/app/uploads:ro
+      - landmarks_data:/app/data:ro
+      # Add volumes for SSL certificates later if using HTTPS
+      # - ./certs:/etc/nginx/certs:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - app # Wait for the 'app' service to be ready (or at least started)
+
+volumes:
+  # Define named volumes
+  uploads_data:
+  landmarks_data:
+
