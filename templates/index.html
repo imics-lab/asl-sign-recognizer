@@ -46,8 +46,9 @@
         .tips-section ul { padding-left: 20px; }
 
         .hidden { display: none !important; }
-        nav { text-align: center; margin-bottom: 20px; }
-        nav a { margin: 0 15px; text-decoration: none; color: #337ab7; font-weight: bold; }
+        nav { display: flex; text-align: center; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 5px; margin-bottom: 15px;}
+        nav a {flex: 1; display: flex; align-items: center; justify-content: center; text-decoration: none; color: #337ab7; font-weight: bold; padding: 0 15px;}
+        nav a:not(:first-child) { border-left: 1px solid #ccc;}
 
         /* Model Selector Styles */
         .model-selector-container { 
@@ -80,8 +81,10 @@
     <div class="container">
         <h1>ASL Sign Recognition</h1>
         <nav>
-            <a href="/landmark_extractor">Go to Landmark Extractor</a>
-            <a href="/playback">Go to Playback Tool</a>
+            <a href="/">Sign Recognition</a>
+            <a href="/landmark_extractor">Landmark Extractor</a>
+            <a href="/playback">Playback Tool</a>
+            <a href="/sign_lookup">Lookup Tool</a>
         </nav>
 
         <!-- Model Selector -->

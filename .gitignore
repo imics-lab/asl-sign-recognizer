@@ -176,3 +176,7 @@ cython_debug/
 # Data files
 *.csv
 *.json
+
+# Video folder and video files
+static/videos/*
+!static/videos/.gitkeep

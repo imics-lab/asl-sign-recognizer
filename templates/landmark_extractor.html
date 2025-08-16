@@ -23,14 +23,20 @@
         .button-blue:hover:not(:disabled) { background-color: #286090; }
         .button-red { background-color: #d9534f; }
         .button-red:hover:not(:disabled) { background-color: #c9302c; }
+
+        nav { display: flex; text-align: center; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 5px; margin-bottom: 15px;}
+        nav a {flex: 1; display: flex; align-items: center; justify-content: center; text-decoration: none; color: #337ab7; font-weight: bold; padding: 0 15px;}
+        nav a:not(:first-child) { border-left: 1px solid #ccc;}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>MediaPipe Landmark Extractor</h1>
         <nav>
-            <a href="/">Back to Sign Recognition</a>
-            <a href="/playback">Go to Playback Tool</a>
+            <a href="/">Sign Recognition</a>
+            <a href="/landmark_extractor">Landmark Extractor</a>
+            <a href="/playback">Playback Tool</a>
+            <a href="/sign_lookup">Lookup Tool</a>
         </nav>
 
         <!-- Section 1: Video Upload for Extraction -->

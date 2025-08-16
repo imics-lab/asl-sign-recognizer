@@ -1,7 +1,7 @@
 # Dockerfile
 
 # Use an official Python runtime as a parent image
-FROM python:3.9-slim
+FROM python:3.9-slim-bookworm
 
 # Set the working directory in the container
 WORKDIR /app
@@ -29,8 +29,10 @@ RUN mkdir -p resources
 # Copy only the necessary application files and assets
 COPY app.py .
 COPY utils.py .
+COPY lookup.py .
 COPY resources/wlasl_class_list.txt resources/wlasl_class_list.txt
 COPY resources/asl_model.pth resources/asl_model.pth
+copy resources/nslt_2000.json
 COPY templates templates/
 COPY static static/
 COPY models/ /app/models/

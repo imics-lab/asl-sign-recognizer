@@ -17,6 +17,9 @@ from utils import extract_landmarks, process_video_file, TOTAL_FEATURES # TOTAL_
 # Import model-related components from our models package
 from models import get_model, list_available_models
 
+# Import functions from lookup.py
+from lookup import create_word_info_dict, get_video_name
+
 import mediapipe as mp
 
 # --- Initialization ---
@@ -46,6 +49,9 @@ print(f"MediaPipe Holistic model initialized. Expecting {TOTAL_FEATURES} feature
 
 # Global variable for the ASL model
 asl_model = None
+
+# Global variable for word dictionary
+wordsDict = create_word_info_dict()
 
 # --- Model Related Constants & Functions ---
 MAX_SEQ_LENGTH = 80  # Adjusted to match the model's expected sequence length
@@ -162,6 +168,11 @@ def landmark_extractor_page():
 def playback_page():
     """Serves the landmark playback page."""
     return render_template('playback.html')
+
+@app.route('/sign_lookup')
+def lookup():
+    """Serves the lookup page."""
+    return render_template('sign_lookup.html')
 
 @app.route('/models', methods=['GET'])
 def get_available_models():
@@ -324,6 +335,27 @@ def serve_data(filename):
         return send_from_directory(app.config['PROCESSED_DATA_FOLDER'], filename, as_attachment=True)
     except FileNotFoundError:
         return jsonify({"error": "File not found"}), 404
+
+@app.route('/get_video_file_name', methods=['GET', 'POST'])
+def get_video_file_name():
+    try:
+        data = request.get_json()
+        if not data or "word" not in data:
+            return jsonify({"error": "No word provided"}), 400
+
+        searchWord = data["word"].lower()
+        if searchWord not in wordsDict:
+            return jsonify({"error": f"No video found for '{searchWord}'"}), 404
+
+        videoFile = get_video_name(wordsDict, searchWord)
+        if not videoFile:
+            return jsonify({"error": f"No video file assigned for '{searchWord}'"}), 404
+
+        return jsonify({"videoFile": videoFile}), 200
+
+    except Exception as e:
+        print("Unexpected error:", e)
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # --- SocketIO Events for Webcam (for both pages, if needed, or can be namespaced) ---
