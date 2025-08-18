@@ -8,8 +8,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let collectedLiveLandmarks = []; // For webcam frames sent one-by-one
     let countdownInterval = null;
     let frameProcessingInterval = null;
+    let captureProgressInterval = null;
+    let captureTimeout = null;
+    let isCountingDown = false;
+    let stopReason = null; // 'auto' | 'user' | null
     let isCapturing = false;
     const frameRate = 15; // FPS for webcam capture
+    const captureDurationMs = 3000; // Auto-stop after 3 seconds
 
     // --- DOM Elements ---
     const webcamFeed = document.getElementById('webcamFeed');
@@ -21,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const stopCaptureButton = document.getElementById('stopCaptureButton');
     const recIndicatorWebcam = document.getElementById('recIndicatorWebcam');
     const countdownDisplay = document.getElementById('countdownDisplay');
+    const captureProgressWrapper = document.getElementById('captureProgressWrapper');
+    const captureProgressBar = document.getElementById('captureProgressBar');
 
     const uploadForm = document.getElementById('uploadForm');
     const videoFile = document.getElementById('videoFile');
@@ -35,6 +42,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const playbackLinkContainer = document.getElementById('playbackLinkContainer'); // To show/hide link
     const clearResultsButton = document.getElementById('clearResultsButton');
 
+    // Modal elements for prediction video preview
+    const predictionModalOverlay = document.getElementById('predictionModalOverlay');
+    const predictionModalClose = document.getElementById('predictionModalClose');
+    const predictionModalTitle = document.getElementById('predictionModalTitle');
+    const predictionModalError = document.getElementById('predictionModalError');
+    const predictionModalVideo = document.getElementById('predictionModalVideo');
+
     // Model selector elements
     const modelSelector = document.getElementById('modelSelector');
     const modelStatus = document.getElementById('modelStatus');
@@ -42,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Initial UI State ---
     function resetUIForNewSign() {
         stopCaptureButton.disabled = true;
+        stopCaptureButton.classList.add('hidden');
         startCaptureButton.disabled = !videoStream; // Enable if cam is already on
         enableCamButton.disabled = !!videoStream;  // Disable if cam is on
         
@@ -61,8 +76,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         countdownDisplay.textContent = '';
         recIndicatorWebcam.style.visibility = 'hidden';
+        if (captureProgressInterval) clearInterval(captureProgressInterval);
+        if (captureTimeout) clearTimeout(captureTimeout);
+        if (captureProgressBar) captureProgressBar.style.width = '0%';
+        if (captureProgressWrapper) captureProgressWrapper.classList.add('hidden');
         statusMessage.textContent = videoStream ? 'Ready to capture or upload.' : 'Please enable camera or upload a video.';
         isCapturing = false;
+        isCountingDown = false;
+        stopReason = null;
         collectedLiveLandmarks = [];
     }
     
@@ -153,13 +174,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!predictionsData || predictionsData.length === 0) {
             predictionList.innerHTML = '<li>No predictions returned.</li>';
             resultsArea.classList.remove('hidden');
+            resultsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
             return;
         }
 
         let overallConfidenceLow = true;
         predictionsData.forEach(pred => {
             const listItem = document.createElement('li');
-            listItem.innerHTML = `<span class="label">${pred.label}:</span> <span class="confidence">${pred.confidence.toFixed(2)}%</span>`;
+            const link = document.createElement('a');
+            link.href = '#';
+            link.textContent = `${pred.label}`;
+            link.className = 'prediction-link';
+            link.setAttribute('data-word', pred.label);
+
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'label';
+            labelSpan.appendChild(link);
+
+            const confidenceSpan = document.createElement('span');
+            confidenceSpan.className = 'confidence';
+            confidenceSpan.textContent = `${pred.confidence.toFixed(2)}%`;
+
+            listItem.appendChild(labelSpan);
+            listItem.appendChild(confidenceSpan);
             predictionList.appendChild(listItem);
             if (pred.confidence > 20) { // Arbitrary threshold for "not low"
                 overallConfidenceLow = false;
@@ -175,7 +212,76 @@ document.addEventListener('DOMContentLoaded', () => {
             confidenceMessage.textContent = ''; // Clear if confident enough
         }
         resultsArea.classList.remove('hidden');
+        resultsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+
+    function openPredictionModalForWord(word) {
+        if (!predictionModalOverlay || !predictionModalVideo || !predictionModalTitle || !predictionModalError) {
+            return;
+        }
+        const searchWord = String(word || '').trim().toLowerCase();
+        predictionModalTitle.textContent = searchWord ? `Preview: ${searchWord.charAt(0).toUpperCase() + searchWord.slice(1)}` : 'Preview';
+        predictionModalError.classList.add('hidden');
+        predictionModalError.textContent = '';
+        predictionModalVideo.src = '';
+
+        predictionModalOverlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+
+        fetch(`/api/lookup/video?word=${encodeURIComponent(searchWord)}`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(errData => {
+                        throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                predictionModalVideo.src = `/static/videos/${data.videoFile}`;
+                predictionModalVideo.play().catch(() => {});
+            })
+            .catch(error => {
+                predictionModalError.textContent = error.message;
+                predictionModalError.classList.remove('hidden');
+            });
+    }
+
+    function closePredictionModal() {
+        if (!predictionModalOverlay) return;
+        if (predictionModalVideo) {
+            try { predictionModalVideo.pause(); } catch (e) {}
+            predictionModalVideo.src = '';
+        }
+        predictionModalOverlay.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+
+    if (predictionModalOverlay) {
+        predictionModalOverlay.addEventListener('click', (e) => {
+            if (e.target === predictionModalOverlay) {
+                closePredictionModal();
+            }
+        });
+    }
+    if (predictionModalClose) {
+        predictionModalClose.addEventListener('click', closePredictionModal);
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && predictionModalOverlay && !predictionModalOverlay.classList.contains('hidden')) {
+            closePredictionModal();
+        }
+    });
+
+    // Click handler for prediction links
+    predictionList.addEventListener('click', (e) => {
+        const target = e.target;
+        if (target && target.classList && target.classList.contains('prediction-link')) {
+            e.preventDefault();
+            const word = target.getAttribute('data-word') || target.textContent || '';
+            openPredictionModalForWord(word);
+        }
+    });
 
 
     // --- Webcam Logic ---
@@ -195,6 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             enableCamButton.disabled = true;
             startCaptureButton.disabled = false;
             stopCaptureButton.disabled = true;
+            stopCaptureButton.classList.add('hidden');
         } catch (err) {
             console.error("Error accessing webcam:", err);
             updateStatus(`Error enabling webcam: ${err.message}`, true);
@@ -207,11 +314,13 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus('Please enable the camera first.', true);
             return;
         }
-        isCapturing = true;
+        isCapturing = false;
+        isCountingDown = true;
         collectedLiveLandmarks = []; // Reset for new capture
 
         startCaptureButton.disabled = true;
         stopCaptureButton.disabled = false;
+        stopCaptureButton.classList.remove('hidden');
         uploadForm.reset(); // Disable upload while capturing
         uploadVideoButton.disabled = true;
         videoFile.disabled = true;
@@ -227,6 +336,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (count <= 0) {
                 clearInterval(countdownInterval);
                 countdownDisplay.textContent = '';
+                isCountingDown = false;
+                isCapturing = true;
                 updateStatus('Capturing...');
                 recIndicatorWebcam.style.visibility = 'visible';
                 
@@ -247,21 +358,64 @@ document.addEventListener('DOMContentLoaded', () => {
                         socket.emit('live_frame_for_recognition', frameData);
                     }
                 }, 1000 / frameRate);
+
+                // Start auto-stop timer and progress bar
+                if (captureProgressBar && captureProgressWrapper) {
+                    captureProgressBar.style.width = '0%';
+                    captureProgressWrapper.classList.remove('hidden');
+                    const captureStart = Date.now();
+                    captureProgressInterval = setInterval(() => {
+                        const elapsed = Date.now() - captureStart;
+                        const percent = Math.min(100, (elapsed / captureDurationMs) * 100);
+                        captureProgressBar.style.width = percent + '%';
+                    }, 50);
+                }
+                captureTimeout = setTimeout(() => {
+                    // Auto stop after captureDurationMs
+                    stopReason = 'auto';
+                    stopCaptureButton.click();
+                }, captureDurationMs);
             }
         }, 1000);
     });
 
     stopCaptureButton.addEventListener('click', () => {
+        // If cancel is pressed during countdown, abort cleanly without errors
+        if (isCountingDown) {
+            if (countdownInterval) clearInterval(countdownInterval);
+            isCountingDown = false;
+            stopReason = 'user';
+            updateStatus('Capture canceled.');
+            resetUIForNewSign();
+            return;
+        }
+
+        if (stopReason !== 'auto') {
+            stopReason = 'user';
+        }
         isCapturing = false; // This will stop the interval in its next check
         if(frameProcessingInterval) clearInterval(frameProcessingInterval);
         if(countdownInterval) clearInterval(countdownInterval); // Ensure countdown stops if stop is clicked early
+        if(captureProgressInterval) clearInterval(captureProgressInterval);
+        if(captureTimeout) clearTimeout(captureTimeout);
 
         recIndicatorWebcam.style.visibility = 'hidden';
+        if (captureProgressWrapper) captureProgressWrapper.classList.add('hidden');
+        if (captureProgressBar) captureProgressBar.style.width = '0%';
         stopCaptureButton.disabled = true;
+        stopCaptureButton.classList.add('hidden');
         startCaptureButton.disabled = false; // Can start a new capture
         uploadVideoButton.disabled = false; // Re-enable upload
         videoFile.disabled = false;
 
+
+        if (stopReason === 'user') {
+            // User canceled during recording; do not send for prediction
+            stopReason = null;
+            updateStatus('Capture canceled.');
+            resetUIForNewSign();
+            return;
+        }
 
         if (collectedLiveLandmarks.length > 0) {
             updateStatus(`Processing ${collectedLiveLandmarks.length} captured frames...`);
@@ -271,6 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus('No frames captured or landmarks extracted. Please try again.', true);
             resetUIForNewSign(); // Or just enable start button
         }
+        stopReason = null;
     });
 
     // --- Video Upload Logic ---
@@ -336,7 +491,51 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // --- Clear/Reset Button ---
-    clearResultsButton.addEventListener('click', resetUIForNewSign);
+    function scrollPageToTop() {
+        try {
+            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+        } catch (e) {
+            window.scrollTo(0, 0);
+        }
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    }
+
+    clearResultsButton.addEventListener('click', () => {
+        // Ensure modal is closed so page can scroll
+        if (predictionModalOverlay && !predictionModalOverlay.classList.contains('hidden')) {
+            closePredictionModal();
+        }
+        resetUIForNewSign();
+        // Defer to next frame to allow layout to update before scrolling
+        if (window.requestAnimationFrame) {
+            requestAnimationFrame(() => scrollPageToTop());
+        } else {
+            setTimeout(scrollPageToTop, 0);
+        }
+    });
+
+    // --- Keyboard Shortcuts ---
+    document.addEventListener('keydown', (event) => {
+        const active = document.activeElement;
+        const tag = active && active.tagName ? active.tagName.toLowerCase() : '';
+        const isTyping = tag === 'input' || tag === 'textarea';
+        if (isTyping) return;
+
+        // Space to start recording
+        if ((event.code === 'Space' || event.key === ' ') && !startCaptureButton.disabled) {
+            event.preventDefault();
+            startCaptureButton.click();
+            return;
+        }
+        // Esc to cancel (during countdown or recording)
+        if (event.key === 'Escape') {
+            if (isCountingDown || isCapturing) {
+                stopReason = 'user';
+                stopCaptureButton.click();
+            }
+        }
+    });
 
 
     // --- SocketIO Event Listeners ---

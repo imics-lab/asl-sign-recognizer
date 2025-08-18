@@ -17,6 +17,10 @@
         .recording-indicator { width: 20px; height: 20px; background-color: red; border-radius: 50%; display: inline-block; margin-left: 10px; animation: blink 1s infinite; visibility: hidden; }
         @keyframes blink { 50% { opacity: 0; } }
 
+        /* Capture progress bar */
+        .capture-progress { width: 100%; height: 8px; background-color: #eee; border-radius: 4px; overflow: hidden; }
+        .capture-progress .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #5cb85c, #f0ad4e, #d9534f); transition: width 0.05s linear; }
+
         /* Buttons */
         button { padding: 10px 15px; font-size: 1em; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.3s ease; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
@@ -28,6 +32,8 @@
         #stopCaptureButton:hover:not(:disabled) { background-color: #c9302c; }
         #clearResultsButton { background-color: #f0ad4e; /* Orange */ }
         #clearResultsButton:hover:not(:disabled) { background-color: #ec971f; }
+
+        .help-text { font-size: 0.9em; color: #555; text-align: center; }
 
         /* Results Area */
         #resultsArea { margin-top: 15px; padding: 15px; border: 1px solid #ddd; background-color: #f9f9f9; border-radius: 4px; }
@@ -75,6 +81,14 @@
         .status-success { color: green; }
         .status-error { color: red; }
         .status-loading { color: orange; }
+
+        /* Prediction video modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: #fff; border-radius: 8px; width: 90%; max-width: 640px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); padding: 16px 16px 12px 16px; position: relative; }
+        .modal h3 { margin: 0 32px 12px 0; }
+        .modal-close { position: absolute; right: 10px; top: 10px; background: transparent; border: none; font-size: 24px; line-height: 24px; cursor: pointer; color: #666; }
+        #predictionModalError { color: #d9534f; margin: 8px 0 0 0; }
+        #predictionModalVideo { width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
     </style>
 </head>
 <body>
@@ -103,11 +117,13 @@
                 <video id="webcamFeed" autoplay playsinline muted></video> <!-- Muted to prevent feedback -->
                 <canvas id="canvas" style="display: none;"></canvas> <!-- Hidden canvas for frame grabbing -->
                 <div id="countdownDisplay"></div>
+                <div id="captureProgressWrapper" class="capture-progress hidden"><div id="captureProgressBar" class="bar"></div></div>
                 <div>
                     <button id="enableCamButton">Enable Camera</button>
-                    <button id="startCaptureButton" disabled>Start Capture <span id="recIndicatorWebcam" class="recording-indicator"></span></button>
-                    <button id="stopCaptureButton" disabled>Stop Capture</button>
+                    <button id="startCaptureButton" disabled>Record Sign (3s) <span id="recIndicatorWebcam" class="recording-indicator"></span></button>
+                    <button id="stopCaptureButton" class="hidden" disabled>Cancel</button>
                 </div>
+                <div class="help-text">You'll see a 3-second countdown, then a 3-second recording window. Press Esc to cancel, Space to start.</div>
             </div>
         </div>
 
@@ -144,11 +160,11 @@
         <div class="section tips-section">
             <h3>Tips for Better Recognition</h3>
             <ul>
-                <li>Position yourself so your upper body and hands are clearly visible.</li>
-                <li>Start at a neutral, hands down position before performing a sign.</li>
-                <li>Perform a sign clearly and at a natural pace.</li>
-                <li>After signing with webcam, return to a neutral, hands-down position before clicking "Stop".</li>
-                <li>Minimize background distractions.</li>
+                <li>Enable the camera and check your framing so your upper body and hands are clearly visible.</li>
+                <li>Start from a neutral, hands-down position; a short countdown will begin before recording.</li>
+                <li>Perform the sign clearly within the 3-second recording window while watching the progress bar.</li>
+                <li>Use the Cancel button or press Esc if you’re not ready or make a mistake; press Space to start quickly.</li>
+                <li>Ensure good lighting and minimize background distractions for better results.</li>
             </ul>
         </div>
 
@@ -156,13 +172,21 @@
         <div class="section tips-section">
             <h3>About this App</h3>
             <p>
-                This application is maintained by the
-                <a href="https://imics-lab.github.io/" target="_blank" rel="noopener">IMICS Lab</a>
-                (Intelligent Multimodal Computing and Sensing) at Texas State University.
+                This application is under development.
             </p>
             <p>
                 Questions? Contact <a href="mailto:vmetsis@txstate.edu">Dr. Vangelis Metsis</a>.
             </p>
+        </div>
+    </div>
+
+    <!-- Prediction video modal -->
+    <div id="predictionModalOverlay" class="modal-overlay hidden" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="predictionModalTitle">
+            <button id="predictionModalClose" class="modal-close" aria-label="Close">×</button>
+            <h3 id="predictionModalTitle">Preview</h3>
+            <p id="predictionModalError" class="hidden"></p>
+            <video id="predictionModalVideo" controls playsinline></video>
         </div>
     </div>
 

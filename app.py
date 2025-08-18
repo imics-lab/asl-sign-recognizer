@@ -28,11 +28,12 @@ app.config['SECRET_KEY'] = 'your_very_secret_key_please_change_me!' # IMPORTANT:
 app.config['UPLOAD_FOLDER'] = 'uploads' # Temporary storage for uploaded videos
 app.config['PROCESSED_DATA_FOLDER'] = 'data' # For JSON landmark files
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload size
-app.config['MODEL_NAME'] = 'mock'  # Default model to use
+app.config['MODEL_NAME'] = 'transformer'  # Default model to use
 app.config['MODEL_PATH'] = 'resources/asl_model.pth'  # Path to model weights
 app.config['CLASS_LIST_PATH'] = 'resources/wlasl_class_list.txt'  # Path to class list
 app.config['RESOURCES_DIR'] = 'resources'
 app.config['VIDEO_FOLDER'] = 'static/videos'
+app.config['HIDE_MOCK_MODEL'] = True  # Temporarily hide mock model from selector
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['PROCESSED_DATA_FOLDER'], exist_ok=True)
@@ -61,7 +62,7 @@ MAX_SEQ_LENGTH = 80  # Adjusted to match the model's expected sequence length
 def initialize_asl_model():
     """Initialize the ASL sign recognition model based on app configuration"""
     global asl_model
-    model_name = app.config.get('MODEL_NAME', 'mock')
+    model_name = app.config.get('MODEL_NAME', 'transformer')
     class_list_path = app.config.get('CLASS_LIST_PATH', 'resources/wlasl_class_list.txt')
     
     model_kwargs = {
@@ -83,8 +84,9 @@ def initialize_asl_model():
         print("ASL model loaded successfully and ready for inference.")
     else:
         print("WARNING: ASL model couldn't be loaded. Falling back to mock model.")
-        # Fallback to mock model if the requested model fails to load
-        asl_model = get_model('mock', class_list_path=class_list_path)
+        # Respect the hide flag but keep fallback for reliability if not hidden
+        if not app.config.get('HIDE_MOCK_MODEL', False):
+            asl_model = get_model('mock', class_list_path=class_list_path)
 
 # Initialize the model at startup
 initialize_asl_model()
@@ -180,7 +182,9 @@ def lookup():
 def get_available_models():
     """Returns a list of available models and the currently selected model."""
     available_models = list_available_models()
-    current_model = app.config.get('MODEL_NAME', 'mock')
+    if app.config.get('HIDE_MOCK_MODEL', False):
+        available_models = [m for m in available_models if m != 'mock']
+    current_model = app.config.get('MODEL_NAME', 'transformer')
     return jsonify({
         "available_models": available_models,
         "current_model": current_model
