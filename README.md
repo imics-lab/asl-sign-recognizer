@@ -123,8 +123,3 @@ asl-sign-recognizer/
     └── ...
 ```
 
-## Future Work / Model Training
-
-To enable actual sign recognition, a deep learning model (e.g., LSTM, Transformer) needs to be trained on landmark sequences. The `batch_processing` directory contains scripts that can be adapted for:
-1.  Extracting landmarks from a dataset like WLASL (using `batch_process_videos.py`).
-2.  Preparing these landmarks into a suitable format (e.g., NumPy arrays with padding/truncation using `create_npy_dataset.py` or `create_split_dataset.py`) for training.
