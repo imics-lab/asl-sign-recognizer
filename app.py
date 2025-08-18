@@ -12,13 +12,13 @@ import torch
 
 # Import functions from our utils.py
 # Ensure utils.py is in the same directory or accessible via PYTHONPATH
-from utils import extract_landmarks, process_video_file, TOTAL_FEATURES # TOTAL_FEATURES is now 225
+from server.utils import extract_landmarks, process_video_file, TOTAL_FEATURES # TOTAL_FEATURES is now 225
 
 # Import model-related components from our models package
 from models import get_model, list_available_models
 
 # Import functions from lookup.py
-from lookup import create_word_info_dict, get_video_name
+from server.lookup import create_word_info_dict, get_video_name
 
 import mediapipe as mp
 
@@ -31,6 +31,8 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload size
 app.config['MODEL_NAME'] = 'mock'  # Default model to use
 app.config['MODEL_PATH'] = 'resources/asl_model.pth'  # Path to model weights
 app.config['CLASS_LIST_PATH'] = 'resources/wlasl_class_list.txt'  # Path to class list
+app.config['RESOURCES_DIR'] = 'resources'
+app.config['VIDEO_FOLDER'] = 'static/videos'
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['PROCESSED_DATA_FOLDER'], exist_ok=True)
@@ -51,7 +53,7 @@ print(f"MediaPipe Holistic model initialized. Expecting {TOTAL_FEATURES} feature
 asl_model = None
 
 # Global variable for word dictionary
-wordsDict = create_word_info_dict()
+wordsDict = create_word_info_dict(app.config['RESOURCES_DIR'])
 
 # --- Model Related Constants & Functions ---
 MAX_SEQ_LENGTH = 80  # Adjusted to match the model's expected sequence length
@@ -336,23 +338,21 @@ def serve_data(filename):
     except FileNotFoundError:
         return jsonify({"error": "File not found"}), 404
 
-@app.route('/get_video_file_name', methods=['GET', 'POST'])
-def get_video_file_name():
+@app.get('/api/lookup/video')
+def api_lookup_video():
     try:
-        data = request.get_json()
-        if not data or "word" not in data:
+        search_word = request.args.get('word', '').strip().lower()
+        if not search_word:
             return jsonify({"error": "No word provided"}), 400
 
-        searchWord = data["word"].lower()
-        if searchWord not in wordsDict:
-            return jsonify({"error": f"No video found for '{searchWord}'"}), 404
+        if search_word not in wordsDict:
+            return jsonify({"error": f"No video found for '{search_word}'"}), 404
 
-        videoFile = get_video_name(wordsDict, searchWord)
-        if not videoFile:
-            return jsonify({"error": f"No video file assigned for '{searchWord}'"}), 404
+        video_file = get_video_name(wordsDict, search_word)
+        if not video_file:
+            return jsonify({"error": f"No video file assigned for '{search_word}'"}), 404
 
-        return jsonify({"videoFile": videoFile}), 200
-
+        return jsonify({"videoFile": video_file}), 200
     except Exception as e:
         print("Unexpected error:", e)
         return jsonify({"error": "Internal server error"}), 500

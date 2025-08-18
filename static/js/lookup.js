@@ -46,11 +46,7 @@ function loadSearchedVideo() {
     const searchWord = document.getElementById('search-box').value.toLowerCase();
     errorMessage.hidden = true;
 
-    fetch("/get_video_file_name", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: searchWord })
-    })
+    fetch(`/api/lookup/video?word=${encodeURIComponent(searchWord)}`)
     .then(response => {
         if (!response.ok) {
             return response.json().then(errData => {

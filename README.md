@@ -17,114 +17,84 @@ The application also includes a separate tool for extracting and downloading Med
     *   Upload videos or use webcam to extract and download MediaPipe landmarks (Pose, Left Hand, Right Hand - 225 features per frame) as JSON files.
 *   **Playback Tool:**
     *   Visualize previously extracted landmark JSON files.
+*   **Sign Dictionary:**
+    *   Lookup an English word and play back its corresponding ASL sign video.
 
 ## Setup and Installation
 
 ### Prerequisites
 
-*   Docker installed and running on your system.
-*   Git for cloning the repository.
+* Docker with Compose V2 (`docker compose ...`) installed and running
+* Git for cloning the repository
 
-### Installation Steps
+### Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/imics-lab/asl-sign-recognizer.git
-    cd asl-sign-recognizer
-    ```
-
-2.  **Build the Docker image:**
-    From the root of the `asl-sign-recognizer` directory, run:
-    ```bash
-    docker build -t asl-recognizer-app .
-    ```
-    *(Changed image tag to `asl-recognizer-app` for consistency).*
+1) Clone the repository
+```bash
+git clone https://github.com/imics-lab/asl-sign-recognizer.git
+cd asl-sign-recognizer
+```
+2) No manual build step needed. The first run (below) will build the image.
 
 ## Running the Application
 
-1.  **Run the Docker container:**
-    ```bash
-    docker run -p 5000:5000 \
-           -v "$(pwd)/data:/app/data" \
-           -v "$(pwd)/uploads:/app/uploads" \
-           --name asl-app-instance \
-           asl-recognizer-app
-    ```
-    *   This command maps port `5000` from the container to your host.
-    *   It mounts a `data` directory from your current host path to `/app/data` in the container. This is where processed landmark JSON files will be stored and accessible for download/playback links.
-    *   It mounts an `uploads` directory from your current host path to `/app/uploads` in the container. This is for temporary storage of uploaded videos.
-    *   `--name asl-app-instance` gives the container a recognizable name.
-    *   Use `-d` flag (`docker run -d ...`) to run in detached mode (in the background).
+1) Start with Docker Compose (detached)
+```bash
+docker compose up --build -d
+```
+This builds the image (first time) and starts the app on `http://localhost:5000`.
 
-    **Note for PowerShell users on Windows:** Replace `$(pwd)` with `${PWD}`:
-    ```powershell
-    docker run -p 5000:5000 -v "${PWD}/data:/app/data" -v "${PWD}/uploads:/app/uploads" --name asl-app-instance asl-recognizer-app
-    ```
+2) Open in your browser
+* Main: `http://localhost:5000`
+* Landmark Extractor: `http://localhost:5000/landmark_extractor`
+* Playback Tool: `http://localhost:5000/playback`
+* Sign Dictionary: `http://localhost:5000/sign_lookup`
 
-2.  **Access the application:**
-    Open your web browser and navigate to:
-    ```
-    http://localhost:5000
-    ```
-    You should see the main ASL Sign Recognition page.
-    *   Landmark Extractor: `http://localhost:5000/landmark_extractor`
-    *   Playback Tool: `http://localhost:5000/playback`
+Notes
+* Videos for the Sign Dictionary page are served from `static/videos/` and must be named `<videoKey>.mp4` where `<videoKey>` comes from `resources/nslt_2000.json`.
+* If you add or change videos, re-run with `--build` (as above) to bake them into the image. For live editing without rebuilds, you can bind-mount your videos (see Development Workflow).
 
 ## Development Workflow
 
-### Stopping the Application
-
-To stop the running container:
+Common commands
 ```bash
-docker stop asl-app-instance
+# Start (build if needed) and run in background
+docker compose up --build -d
+
+# View logs
+docker compose logs -f app
+
+# Stop and remove containers
+docker compose down
 ```
 
-### Re-running the Application
-
-If the container is stopped, you can restart it with:
+Making code or asset changes
+* Rebuild after changes to Python/HTML/JS/static assets (copied into the image):
 ```bash
-docker start asl-app-instance
+docker compose up --build -d
 ```
-(No need to `docker run` again unless you removed it or want to change parameters).
+* Optional: live-edit Sign Lookup videos without rebuilding by bind-mounting your local folder. Add this line under `services.app.volumes` in `docker-compose.yml`:
+```yaml
+- /absolute/path/to/static/videos:/app/static/videos:ro
+```
+Then restart with `docker compose up -d`.
 
-### Modifying Code and Rebuilding
+## Code layout
 
-If you make changes to the application code (Python, HTML, JS):
-
-1.  **Stop the current container (if running):**
-    ```bash
-    docker stop asl-app-instance
-    ```
-    or if you are using `docker-compose`, you can stop it with:
-    ```bash
-    docker-compose down
-    ```
-2.  **Remove the stopped container:**
-    (This is important as `docker run` with `--name` will conflict if an old instance exists)
-    ```bash
-    docker rm asl-app-instance
-    ```
-    or if you are using `docker-compose`, you can remove it with:
-    ```bash
-    docker-compose rm
-    ```
-3.  **Rebuild the Docker image:**
-    (This incorporates your code changes into the image)
-    ```bash
-    docker build -t asl-recognizer-app .
-    ```
-    or if you are using `docker-compose`, you can rebuild it with:
-    ```bash
-    docker-compose build app
-    ```
-4.  **Run the newly built image:**
-    ```bash
-    docker run -p 5000:5000 -v "$(pwd)/data:/app/data" -v "$(pwd)/uploads:/app/uploads" --name asl-app-instance asl-recognizer-app
-    ```
-    or if you are using `docker-compose`, you can run it with:
-    ```bash
-    docker-compose up -d
-    ```
+```
+asl-sign-recognizer/
+├── app.py                    # Flask entrypoint
+├── server/                   # Lightweight backend helpers
+│   ├── __init__.py
+│   ├── lookup.py             # Sign Dictionary mapping utilities
+│   └── utils.py              # Landmark extraction utilities
+├── models/                   # ML models (unchanged)
+├── templates/                # HTML templates
+├── static/                   # Static files (JS, CSS, videos)
+│   └── videos/               # Sign Dictionary videos (<videoKey>.mp4)
+├── resources/                # Backend assets (class lists, model weights, json mappings)
+└── docker-compose.yml, Dockerfile, requirements.txt, README.md
+```
 
 ## Project Structure
 

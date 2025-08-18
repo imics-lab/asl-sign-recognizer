@@ -28,11 +28,10 @@ RUN mkdir -p resources
 
 # Copy only the necessary application files and assets
 COPY app.py .
-COPY utils.py .
-COPY lookup.py .
+COPY server/ /app/server/
 COPY resources/wlasl_class_list.txt resources/wlasl_class_list.txt
 COPY resources/asl_model.pth resources/asl_model.pth
-copy resources/nslt_2000.json
+COPY resources/nslt_2000.json resources/nslt_2000.json
 COPY templates templates/
 COPY static static/
 COPY models/ /app/models/
