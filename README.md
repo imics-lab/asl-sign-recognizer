@@ -53,6 +53,7 @@ This builds the image (first time) and starts the app on `http://localhost:5000`
 Notes
 * Videos for the Sign Dictionary page are served from `static/videos/` and must be named `<videoKey>.mp4` where `<videoKey>` comes from `resources/nslt_2000.json`.
 * If you add or change videos, re-run with `--build` (as above) to bake them into the image. For live editing without rebuilds, you can bind-mount your videos (see Development Workflow).
+* Dataset attribution: The Sign Dictionary videos and mappings are derived from the WLASL (World-Level American Sign Language) dataset. See: https://github.com/dxli94/WLASL
 
 ## Development Workflow
 
