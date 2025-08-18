@@ -176,6 +176,7 @@ cython_debug/
 # Data files
 *.csv
 *.json
+!resources/nslt_2000.json
 
 # Video folder and video files
 static/videos/*
