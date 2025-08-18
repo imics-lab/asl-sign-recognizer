@@ -100,26 +100,39 @@ asl-sign-recognizer/
 
 ```
 asl-sign-recognizer/
+├── app.py                        # Flask entrypoint
+├── server/                       # Backend helpers
+│   ├── __init__.py
+│   ├── lookup.py                 # Sign Dictionary mapping utilities
+│   └── utils.py                  # Landmark extraction utilities
+├── models/                       # ML models
+│   ├── __init__.py
+│   ├── base_model.py
+│   ├── mock_model.py
+│   ├── registry.py
+│   ├── transformer_model.py
+│   └── utils.py
+├── templates/                    # HTML templates
+│   ├── index.html                # Main sign recognition page
+│   ├── landmark_extractor.html   # Landmark extraction tool
+│   ├── playback.html             # Landmark playback visualization
+│   └── sign_lookup.html          # Sign Dictionary page
+├── static/                       # Static assets
+│   ├── js/
+│   │   ├── main.js               # JS for landmark_extractor.html
+│   │   ├── recognition.js        # JS for index.html (sign recognition)
+│   │   ├── playback.js           # JS for playback.html
+│   │   └── lookup.js             # JS for Sign Dictionary
+│   └── videos/                   # Sign videos (<videoKey>.mp4); .gitkeep tracked
+├── resources/                    # Backend assets (not served directly)
+│   ├── wlasl_class_list.txt
+│   ├── nslt_2000.json
+│   └── asl_model.pth
+├── uploads/                      # Temporary uploaded videos (volume)
+├── data/                         # Processed landmark JSONs (volume)
+├── docker-compose.yml
 ├── Dockerfile
-├── README.md
-├── app.py                   # Flask application, routes, SocketIO logic
-├── requirements.txt         # Python dependencies
-├── utils.py                 # Landmark extraction and video processing utilities
-├── resources/
-│   └── wlasl_class_list.txt # List of ASL signs and their labels
-├── static/
-│   └── js/
-│       ├── main.js          # JS for landmark_extractor.html
-│       ├── recognition.js   # JS for index.html (sign recognition)
-│       └── playback.js      # JS for playback.html
-├── templates/
-│   ├── index.html           # Main sign recognition page
-│   ├── landmark_extractor.html # Dedicated landmark extraction tool
-│   └── playback.html        # Landmark playback visualization
-└── batch_processing/        # Scripts for offline data preparation (not part of running app)
-    ├── batch_process_videos.py
-    ├── create_npy_dataset.py
-    ├── create_split_dataset.py
-    └── ...
+├── requirements.txt
+└── README.md
 ```
 
