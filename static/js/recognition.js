@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let isCountingDown = false;
     let stopReason = null; // 'auto' | 'user' | null
     let isCapturing = false;
-    const frameRate = 15; // FPS for webcam capture
+    let inFlightFrames = 0; // Frame counter for frames sent for landmark extraction
+    const frameRate = 30; // FPS for webcam capture
     const captureDurationMs = 3000; // Auto-stop after 3 seconds
 
     // --- DOM Elements ---
@@ -340,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isCapturing = true;
                 updateStatus('Capturing...');
                 recIndicatorWebcam.style.visibility = 'visible';
-                
+
                 // Start sending frames
                 frameProcessingInterval = setInterval(() => {
                     if (!isCapturing) {
@@ -356,6 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ctx.drawImage(webcamFeed, 0, 0, canvas.width, canvas.height);
                         const frameData = canvas.toDataURL('image/jpeg', 0.8); // Quality 0.8
                         socket.emit('live_frame_for_recognition', frameData);
+                        inFlightFrames++;
                     }
                 }, 1000 / frameRate);
 
@@ -416,17 +418,19 @@ document.addEventListener('DOMContentLoaded', () => {
             resetUIForNewSign();
             return;
         }
-
-        if (collectedLiveLandmarks.length > 0) {
-            updateStatus(`Processing ${collectedLiveLandmarks.length} captured frames...`);
-            // Send the whole sequence for prediction
-            socket.emit('predict_webcam_sequence', collectedLiveLandmarks);
-        } else {
-            updateStatus('No frames captured or landmarks extracted. Please try again.', true);
-            resetUIForNewSign(); // Or just enable start button
-        }
+        trySendPrediction();
         stopReason = null;
     });
+
+    function trySendPrediction() {
+        // SendsPrediction to model only when all landmarks have been extracted from frames
+        if (inFlightFrames === 0 && collectedLiveLandmarks.length > 0) {
+            updateStatus(`Processing ${collectedLiveLandmarks.length} captured frames...`);
+            socket.emit('predict_webcam_sequence', collectedLiveLandmarks);
+        }   else {
+            updateStatus('Waiting for all frames to finish processing...');
+        }
+    }
 
     // --- Video Upload Logic ---
     uploadForm.addEventListener('submit', async (event) => {
@@ -556,8 +560,10 @@ document.addEventListener('DOMContentLoaded', () => {
         enableCamButton.disabled = false; // Allow re-enabling
     });
 
+    // Listens for live landmarks to be sent back; stores landmarks in collectedLiveLandmarks
     socket.on('live_landmarks_result', (data) => {
-        if (isCapturing) { // Only collect if we are actively capturing
+        if (isCapturing || inFlightFrames > 0) { // Only collect if we are actively capturing
+            inFlightFrames--;
             if (data.error) {
                  console.error("Backend Error (live_landmarks_result):", data.error);
                  // Optionally display this error to the user, but be mindful of spamming
@@ -569,7 +575,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Server might send empty landmarks if nothing detected in frame, still collect it as a frame
                 collectedLiveLandmarks.push([]); // Or push a specific marker for "empty detection"
             }
+            trySendPrediction(); // Check if all frames are done; trigger prediction if ready
         }
+        
     });
 
     socket.on('webcam_prediction_result', (result) => {
